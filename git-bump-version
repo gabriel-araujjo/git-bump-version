@@ -1,0 +1,460 @@
+#!/bin/sh
+
+# Copyright (C) 2020 Gabriel Araújo. <gabriel140492@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+usage()
+{
+    cat >&2 << EOF
+Git version bump utilitary
+
+USAGE:
+        git bump-version [--help | -h] [--major | -M] [--minor | -n]
+                [--patch | -p] [<version>]
+
+DESCRIPTION:
+        This command shifts up the 'Unreleased' section on GHANGELOG.md
+        so that a new section, named with the version passed by argument,
+        is created to keep the modifications that was unreleased.
+
+        It also changes version of the root cmake project if a CMakeLists.txt
+        is found.
+
+        On success it also creates a tag to the version.
+
+        If some error occur during the version bumping the chages are
+        immediately reverted.
+
+        GHANGELOG.md will be automaticaly created if it doesn't exist.
+
+OPTIONS:
+        -h, --help      Prints help information.
+        -M, --major     Tweaks version major number.
+                        Ignored if version argument is present.
+        -m, --minor     Tweaks version minor number.
+                        Ignored if version argument is present.
+        -p, --patch     Tweaks version patch number.
+                        Ignored if version argument is present.
+        -P, --push      Also push the modifications to origin.
+
+        If --major, --minor and --patch are present twice or more, only the
+        last one is applied.
+
+EXAMPLES:
+        git bump-version 1.0.0
+        git bump-version --major
+        git bump-version --minor
+
+ARGUMENTS:
+        <version>
+
+        The version argument must follow the semantic versioning 2.0.0* spec
+        so that it obey to the following format
+
+                MAJOR.MINOR.PATCH
+
+        where MAJOR, MINOR and PATCH are decimal integer greater than or
+        equal to zero. No leading zero is allowed in any part.
+
+        [*] Currently this command does not support versions with prerelease
+            or buildmetadatas strings.
+EOF
+
+}
+
+version=""
+changelog_file=CHANGELOG.md
+status=idle
+push=0
+default_remote=origin
+
+init_cmake_project_version()
+{
+    local search_init='^\(project\)(\(.*\))'
+    local replace_init="\\1(\\2 VERSION $version)"
+
+    if [ -f CMakeLists.txt ]
+    then
+        sed -i "s/${search_init}/${replace_init}/ig" CMakeLists.txt
+    fi
+}
+
+bump_cmake_project_version()
+{
+    local search='^\(project\)(\(.*\)\(version\)[ tab]\+[a-z0-9.-_\-]\+\([^)]*\))'
+    local replace="\\1(\\2\\3 $version\\4)"
+
+    if [ -f CMakeLists.txt ]
+    then
+        if grep -q -i -e 'project(.*version.*)' CMakeLists.txt
+        then
+            sed -i "s/${search}/${replace}/ig" CMakeLists.txt
+        else
+            init_cmake_project_version
+        fi
+    fi
+}
+
+init_changelog()
+{
+    cat >> "$changelog_file" << EOF
+# Changelog
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+EOF
+    echo "## [$version] - $(date +%Y-%m-%d)" >> "$changelog_file"
+    echo >> "$changelog_file"
+    echo "- Initial release" >> "$changelog_file"
+    return $?
+}
+
+bump_changelog()
+{
+    local search='##[ tab]\+\[Unreleased\]'
+    local replace="## [Unreleased]\\n\\n## [$version] - $(date +%Y-%m-%d)"
+
+    if [ -f "$changelog_file" ]
+    then
+        sed -i "s/${search}/${replace}/ig" "$changelog_file"
+    else
+        init_changelog "$changelog_file"
+    fi
+    return $?
+}
+
+version_greater()
+{
+    local part_index='1'
+    if [ $# -eq 3 ]
+    then
+        part_index=$3
+    fi
+
+    if [ $part_index -eq 4 ]
+    then
+        # version_left is equal to version_right
+        return 1
+    fi
+
+    local left_part=$(echo $1 | cut -d'.' -f $part_index)
+    local right_part=$(echo $2 | cut -d'.' -f $part_index)
+
+    if [ $left_part -gt $right_part ]
+    then
+        return 0
+    elif [ $left_part -eq $right_part ] && version_greater $1 $2 $(($part_index + 1))
+    then
+        return 0
+    else
+        return 1
+    fi
+}
+
+last_version()
+{
+    echo $(sed -n 's/##[ tab]\+\[\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p' "$changelog_file" | head -1)
+}
+
+default_branch()
+{
+    local ref="refs/remotes/$default_remote"
+    echo "$(git symbolic-ref $ref/HEAD | sed s@^$ref/@@)"
+}
+
+bump_version()
+{
+    local v="$([ -f $changelog_file ] && last_version || echo '0.0.0')"
+    local v=$(echo $v | sed 's/\./ /g')
+
+    case $1 in
+        major)
+            local index=0
+            ;;
+        minor)
+            local index=1
+            ;;
+        *)
+            local index=2
+            ;;
+    esac
+
+    local parts=($v)
+    local parts[$index]=$(expr ${parts[$index]} + 1)
+    echo "${parts[0]}.${parts[1]}.${parts[2]}"
+    set +x
+}
+
+is_last_changelog_valid()
+{
+    if ! [ -f "$changelog_file" ]
+    then
+        return 0
+    fi
+
+    local unreleased_line=$(grep -n -i -e '##[ tab]\+\[Unreleased\]' $changelog_file | cut -d':' -f 1)
+    local last_release_line=$(grep -n -i -e '##[ tab]\+\[[0-9]\+\.' $changelog_file | cut -d':' -f 1 | head -1)
+
+    local start=$(expr $unreleased_line + 1)
+    local end=$(expr $last_release_line - 1)
+
+    local log="$(sed -n -e ${start},${end}p $changelog_file)"
+    local log=$(echo $log)
+
+    if [ -z "$log"]; then return 1; fi
+}
+
+is_version_format_ok()
+{
+    local valid_part='\(0\|[1-9][0-9]*\)'
+    local valid_version="^$valid_part\\.$valid_part\\.$valid_part$"
+
+    if ! echo "$version" | grep -q -e "$valid_version"
+    then
+        return 1
+    fi
+}
+
+is_version_big_enough()
+{
+    if ! [ -f "$changelog_file" ]
+    then
+        return 0
+    fi
+
+    if ! version_greater $version $(last_version)
+    then
+        return 1
+    fi
+}
+
+on_right_branch()
+{
+    local current_branch=$(git rev-parse --abbrev-ref HEAD)
+
+    if ! [ "$current_branch" = "$(default_branch)" ]
+    then
+        return 1
+    fi
+}
+
+all_changes_committed()
+{
+    if git status --porcelain | grep -q -e "^ \?[MAD]"
+    then
+        return 1
+    fi
+
+    if [ -f $changelog_file ] && git status --porcelain $changelog_file | grep -q -e "^??"
+    then
+        return 1
+    fi
+
+    if [ -f CMakeLists.txt ] && git status --porcelain CMakeLists.txt | grep -q -e "^??"
+    then
+        return 1
+    fi
+}
+
+skip_bumping()
+{
+    local cause=$1
+    printf "error: " >&2
+    case $cause in
+        missing_version)
+            echo "missing version" >&2
+            printf "\tUsage: git bump-version [...options] <version>\n" >&2
+            echo "Run \"git bump --help\" for more details." >&2
+            ;;
+        version_format)
+            echo "invalid version format" >&2
+            echo "Version must follow Semantic Versioning." \
+            "See https://semver.org/spec/v2.0.0.html for more details." >&2
+            ;;
+        small_version)
+            echo "version not big enough" >&2
+            echo "Please choose a version greater than $(last_version)" >&2
+            ;;
+        empty_changelog)
+            echo "empty changelog" >&2
+            echo "Please write what's new in this version inside" \
+            "the 'Unrelease' section of $changelog_file file." >&2
+            echo "Remind to commit your work when done." >&2
+            ;;
+        wrong_branch)
+            echo "on wrong branch" >&2
+            echo "Bumping version is supported only on '$(default_branch)' branch"
+            echo "Please \`git checkout $(default_branch)\` before bump-version." >&2
+            ;;
+        uncommitted_files)
+            echo "changes not committed" >&2
+            echo "Your local changes can be lost if the version bumping fails:" >&2
+            for file in $(git status --porcelain | grep -e "^ \?[MAD]" | awk '{print $2}')
+            do
+                printf "\t$file\n" >&2
+            done
+            if [ -f $changelog_file ] && git status --porcelain $changelog_file | grep -q -e "^??"
+            then
+                printf "\t$changelog_file\n" >&2
+            fi
+
+            if [ -f CMakeLists.txt ] && git status --porcelain CMakeLists.txt | grep -q -e "^??"
+            then
+                return CMakeLists.txt
+            fi
+            echo "Please commit your changes or stash them before you bump version." >&2
+            ;;
+        *)
+            echo $1 >&2
+            ;;
+    esac
+    echo Aborting >&2
+    exit 1
+}
+
+revert()
+{
+    echo Aborting >&2
+    case $status in
+        commit)
+            git restore --staged $changelog_file CMakeLists.txt
+            git restore $changelog_file CMakeLists.txt .
+            if [ -f $changelog_file ] && git status --porcelain $changelog_file | grep -q -e "^??"
+            then
+                rm $changelog_file
+            fi
+            ;;
+        tag)
+            git reset --hard HEAD^ > /dev/null
+            ;;
+        push)
+            git reset --hard HEAD^ > /dev/null
+            git tag -d $version > /dev/null
+            ;;
+    esac
+    exit 2
+}
+
+handle_signal()
+{
+    echo >&2
+    revert
+}
+
+while [[ $1 = -?* ]]; do
+    case $1 in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -P|--push)
+            push=1
+            ;;
+        -M|--major)
+            version=$(bump_version major)
+            ;;
+        -m|--minor)
+            version=$(bump_version minor)
+            ;;
+        -p|--patch)
+            version=$(bump_version patch)
+            ;;
+    esac
+    shift
+done
+
+if [ ! -z "$1" ]
+then
+    version="$1"
+fi
+
+if [ -z "$version" ]
+then
+    skip_bumping missing_version
+fi
+
+if ! on_right_branch
+then
+    skip_bumping wrong_branch
+fi
+
+if ! all_changes_committed
+then
+    skip_bumping uncommitted_files
+fi
+
+if ! is_version_format_ok
+then
+    skip_bumping version_format
+fi
+
+if ! is_version_big_enough
+then
+    skip_bumping small_version
+fi
+
+if ! is_last_changelog_valid
+then
+    skip_bumping empty_changelog
+fi
+
+trap handle_signal 1 2 15
+
+status=commit
+if bump_changelog && bump_cmake_project_version
+then
+    git add "$changelog_file"
+    if [ -f CMakeLists.txt ]
+    then
+        git add CMakeLists.txt
+    fi
+
+    if ! (git commit -m "Bump version to $version" > /dev/null)
+    then
+        revert
+    fi
+
+    status=tag
+    if ! git tag "$version"
+    then
+        revert tag
+    fi
+
+    if [ "$push" -eq 1 ]
+    then
+        status=push
+        if ! (git push $default_remote $(default_branch) --tags)
+        then
+            revert
+        fi
+    fi
+else
+    revert
+fi
+
+echo "The last software version in changelog is now $version:"
+echo "  (use \"git push $default_remote $(default_branch) --tags\" to sync)"
+echo "  (use \"git tag -d $version && git reset --hard HEAD^\" to undo it)"
+
+printf "\tGHANGELOG.md\n"
+if [ -f CMakeLists.txt ]
+then
+    printf "\tCMakeLists.txt\n"
+fi
+printf "\ttag [$version] created\n"
