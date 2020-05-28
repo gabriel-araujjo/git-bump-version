@@ -213,6 +213,12 @@ last_changelog()
     local replace=''
 
     local message=$(sed -n -e ${start},${end}p $changelog_file)
+
+    if [ -z "$message" ]
+    then
+        message="Initial release"
+    fi
+
     echo "$message" | sed "s/${find}/${replace}/g"
 }
 
