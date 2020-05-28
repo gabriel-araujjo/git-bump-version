@@ -201,6 +201,21 @@ bump_version()
     set +x
 }
 
+last_changelog()
+{
+    local unreleased_line=$(grep -n -i -e '##[ tab]\+\[Unreleased\]' $changelog_file | cut -d':' -f 1)
+    local last_release_line=$(grep -n -i -e '##[ tab]\+\[[0-9]\+\.' $changelog_file | cut -d':' -f 1 | head -1)
+
+    local start=$(expr $unreleased_line + 1)
+    local end=$(expr $last_release_line - 1)
+
+    local find='^#\+[ tab]*'
+    local replace=''
+
+    local message=$(sed -n -e ${start},${end}p $changelog_file)
+    echo "$message" | sed "s/${find}/${replace}/g"
+}
+
 is_last_changelog_valid()
 {
     if ! [ -f "$changelog_file" ]
@@ -217,7 +232,7 @@ is_last_changelog_valid()
     local log="$(sed -n -e ${start},${end}p $changelog_file)"
     local log=$(echo $log)
 
-    if [ -z "$log"]; then return 1; fi
+    if [ -z "$log" ]; then return 1; fi
 }
 
 is_version_format_ok()
@@ -416,6 +431,8 @@ fi
 
 trap handle_signal 1 2 15
 
+commit_message=$(last_changelog)
+
 status=commit
 if bump_changelog && bump_cmake_project_version
 then
@@ -430,8 +447,9 @@ then
         revert
     fi
 
+    tagmessage=
     status=tag
-    if ! git tag "$version"
+    if ! git tag -a -m "$commit_message" "$version"
     then
         revert tag
     fi
