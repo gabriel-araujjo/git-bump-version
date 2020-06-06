@@ -121,7 +121,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 EOF
     echo "## [$version] - $(date +%Y-%m-%d)" >> "$changelog_file"
     echo >> "$changelog_file"
-    echo "- Initial release" >> "$changelog_file"
+    echo "Initial release" >> "$changelog_file"
     return $?
 }
 
@@ -175,7 +175,12 @@ last_version()
 default_branch()
 {
     local ref="refs/remotes/$default_remote"
-    echo "$(git symbolic-ref $ref/HEAD | sed s@^$ref/@@)"
+    if git symbolic-ref $ref/HEAD > /dev/null 2>&1
+    then
+        echo "$(git symbolic-ref $ref/HEAD | sed s@^$ref/@@)"
+    else
+        echo "master"
+    fi
 }
 
 bump_version()
@@ -202,21 +207,21 @@ bump_version()
 
 last_changelog()
 {
-    local unreleased_line=$(grep -n -i -e '##[ tab]\+\[Unreleased\]' $changelog_file | cut -d':' -f 1)
-    local last_release_line=$(grep -n -i -e '##[ tab]\+\[[0-9]\+\.' $changelog_file | cut -d':' -f 1 | head -1)
+    if [ -e "$changelog_file" ]
+    then
+        local unreleased_line=$(grep -n -i -e '##[ tab]\+\[Unreleased\]' $changelog_file | cut -d':' -f 1)
+        local last_release_line=$(grep -n -i -e '##[ tab]\+\[[0-9]\+\.' $changelog_file | cut -d':' -f 1 | head -1)
 
-    local start=$(expr $unreleased_line + 1)
-    local end=$(expr $last_release_line - 1)
+        local start=$(expr $unreleased_line + 1)
+        local end=$(expr $last_release_line - 1)
+
+        local message=$(sed -n -e ${start},${end}p $changelog_file)
+    else
+        local message="Initial release"
+    fi
 
     local find='^#\+[ tab]*'
     local replace=''
-
-    local message=$(sed -n -e ${start},${end}p $changelog_file)
-
-    if [ -z "$message" ]
-    then
-        message="Initial release"
-    fi
 
     echo "$message" | sed "s/${find}/${replace}/g"
 }
