@@ -183,22 +183,21 @@ bump_version()
     local v="$([ -f $changelog_file ] && last_version || echo '0.0.0')"
     local v=$(echo $v | sed 's/\./ /g')
 
+    local parts=($v)
     case $1 in
         major)
-            local index=0
+            local parts[0]=$(expr ${parts[0]} + 1)
+            echo "${parts[0]}.0.0"
             ;;
         minor)
-            local index=1
+            local parts[1]=$(expr ${parts[1]} + 1)
+            echo "${parts[0]}.${parts[1]}.0"
             ;;
         *)
-            local index=2
+            local parts[2]=$(expr ${parts[2]} + 1)
+            echo "${parts[0]}.${parts[1]}.${parts[2]}"
             ;;
     esac
-
-    local parts=($v)
-    local parts[$index]=$(expr ${parts[$index]} + 1)
-    echo "${parts[0]}.${parts[1]}.${parts[2]}"
-    set +x
 }
 
 last_changelog()
