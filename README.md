@@ -7,6 +7,8 @@ A git tool to [keep a changelog](https://keepachangelog.com/en/1.0.0/)
 git clone https://github.com/gabriel-araujjo/git-bump-version.git
 cd git-bump-version
 sudo cp git-bump-version /usr/local/bin
+sudo mkdir -P /usr/local/share/man/man1
+sudo cp git-bump-version.1 /usr/local/share/man/man1
 ```
 
 # Usage

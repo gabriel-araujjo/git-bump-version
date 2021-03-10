@@ -93,12 +93,12 @@ init_cmake_project_version()
 
 bump_cmake_project_version()
 {
-    local search='^\(project\)(\(.*\)\(version\)[ tab]\+[a-z0-9.-_\-]\+\([^)]*\))'
-    local replace="\\1(\\2\\3 $version\\4)"
+    local search='^\(project\)(\(.*\)\(version\)[ tab]\+[a-z0-9.-_\-]\+\([^)]*\)\()\?\)'
+    local replace="\\1(\\2\\3 $version\\4\\5"
 
     if [ -f CMakeLists.txt ]
     then
-        if grep -q -i -e 'project(.*version.*)' CMakeLists.txt
+        if grep -q -i -e 'project(.*version.*)\?' CMakeLists.txt
         then
             sed -i "s/${search}/${replace}/ig" CMakeLists.txt
         else
@@ -179,7 +179,7 @@ default_branch()
     then
         echo "$(git symbolic-ref $ref/HEAD | sed s@^$ref/@@)"
     else
-        echo "master"
+	echo $(git remote show $default_remote | grep "HEAD branch" | cut -d ":" -f 2)
     fi
 }
 

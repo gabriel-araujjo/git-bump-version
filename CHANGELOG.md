@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `-M, --major` option resets neither minor nor patching counting
 - `-m, --minor` option does not reset patching counting
 - Git bump does not work on newly inited repos
+- Repository with custom main branches
 
 ## [1.0.0] - 2020-05-28
 
