@@ -1,0 +1,95 @@
+git-bump-version(1)
+===================
+
+NAME
+----
+git-bump-version - Create versioned tags
+
+SYNOPSIS
+--------
+[verse]
+'git bump-version' [--help | -h] [--major | -M] [--minor | -n]
+	  [--patch | -p] [<version>]
+
+DESCRIPTION
+-----------
+This command shifts up the 'Unreleased' section on 'GHANGELOG.md'
+so that a new section, named with the version passed by argument,
+is created to keep the modifications that was unreleased.
+
+It also changes version of the root cmake project if a 'CMakeLists.txt'
+is found.
+
+On success it also creates a tag to the version.
+
+If some error occur during the version bumping the chages are
+immediately reverted.
+
+GHANGELOG.md will be automaticaly created if it doesn't exist.
+
+ARGUMENTS
+---------
+
+<version>::
+	The version argument must follow the semantic versioning 2.0.0* spec
+	so that it obey to the following format
++
+	MAJOR.MINOR.PATCH
++
+where `MAJOR`, `MINOR` and `PATCH` are decimal integer greater than or
+equal to zero. No leading zero is allowed in any part.
++
+[*] Currently this command does not support versions with prerelease
+or buildmetadatas strings.
+
+OPTIONS
+-------
+
+`-h`::
+`--help`::
+	Prints help information.
+
+`-M`::
+`--major`::
+	Tweaks version major number.
+	Ignored if *version* argument is present.
+
+`-m`::
+`--minor`::
+	Tweaks version minor number.
+	Ignored if *version* argument is present.
+
+`-p`::
+`--patch`::
+	Tweaks version patch number.
+	Ignored if *version* argument is present.
+
+
+EXAMPLES
+--------
+
+* Creates a tag *1.0.0* with changes described in *Unrelease* section
+  in *CHANGELOG.md*.
++
+------------------------
+$ git bump-version 1.0.0
+------------------------
+
+* Increase version from *1.0.2* to *2.0.0*.
++
+--------------------------
+$ git bump-version --major
+--------------------------
+
+* Increase version from *1.0.2* to *1.1.0*.
++
+--------------------------
+$ git bump-version --minor
+--------------------------
+
+
+SEE ALSO
+--------
+
+Keep a Changelog (https://keepachangelog.com/). +
+Semantic Versioning (https://semver.org/).
